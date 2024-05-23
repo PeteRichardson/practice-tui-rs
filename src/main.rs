@@ -56,7 +56,7 @@ impl App {
                     "p",
                     "Papa",
                     vec![
-                        TreeItem::new_leaf("q", "Quebec"),
+                        TreeItem::new_leaf("q", "blorb"),
                         TreeItem::new_leaf("r", "Romeo"),
                         TreeItem::new_leaf("s", "Sierra"),
                         TreeItem::new_leaf("t", "Tango"),
@@ -100,7 +100,7 @@ impl App {
                     .bg(Color::LightGreen)
                     .add_modifier(Modifier::BOLD),
             )
-            .highlight_symbol(">> ");
+            .highlight_symbol("");
         frame.render_stateful_widget(widget, area, &mut self.state);
     }
 }
@@ -117,7 +117,8 @@ fn main() -> std::io::Result<()> {
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
 
     // App
-    let app = App::new();
+    let mut app = App::new();
+    app.state.select(vec!["a"]);
     let res = run_app(&mut terminal, app);
 
     // restore terminal
@@ -150,11 +151,18 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> std::io::Res
                 Event::Key(key) => match key.code {
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('\n' | ' ') => app.state.toggle_selected(),
-                    KeyCode::Left => app.state.key_left(),
+                    KeyCode::Left => {
+                        if app.state.opened().contains(app.state.selected()) {
+                            app.state.key_left();
+                            true
+                        } else {
+                            false
+                        }
+                    }
                     KeyCode::Right => app.state.key_right(),
                     KeyCode::Down => app.state.key_down(),
                     KeyCode::Up => app.state.key_up(),
-                    KeyCode::Esc => app.state.select(Vec::new()),
+                    KeyCode::Esc => app.state.select_first(),
                     KeyCode::Home => app.state.select_first(),
                     KeyCode::End => app.state.select_last(),
                     KeyCode::PageDown => app.state.scroll_down(3),
