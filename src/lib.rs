@@ -2,9 +2,10 @@ use clap::Parser;
 use crossterm::event::{Event, KeyCode, MouseEventKind};
 use ratatui::backend::Backend;
 use ratatui::layout::Position;
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::{Block, Scrollbar, ScrollbarOrientation};
-use ratatui::{Frame, Terminal};
+use ratatui::prelude::{Color, Constraint, Layout, Line, Modifier, Style, Terminal, Text};
+
+use ratatui::widgets::{Block, Paragraph, Scrollbar, ScrollbarOrientation};
+use ratatui::Frame;
 use std::time::{Duration, Instant};
 use std::{
     fs::File,
@@ -34,7 +35,7 @@ impl App {
         let buf = BufReader::new(file);
         let lines = buf
             .lines()
-            .map(|l| l.expect("Could not parse line"))
+            .map(|l| l.expect("couldn't read the file lines"))
             .collect();
 
         let mut app = Self {
@@ -63,13 +64,13 @@ impl App {
     }
 
     fn draw(&mut self, frame: &mut Frame) {
-        let area = frame.size();
-        let widget = Tree::new(&self.items)
+        let horizontal = Layout::horizontal([Constraint::Length(20), Constraint::Min(1)]);
+        let [nav_area, log_area] = horizontal.areas(frame.size());
+
+        let tree = Tree::new(&self.items)
             .expect("all item identifiers are unique")
             .block(
-                Block::bordered()
-                    .title("Tree Widget")
-                    .title_bottom(format!("{:?}", self.state)),
+                Block::bordered().title("Table of Contents"), // .title_bottom(format!("{:?}", self.state)),
             )
             .experimental_scrollbar(Some(
                 Scrollbar::new(ScrollbarOrientation::VerticalRight)
@@ -83,7 +84,17 @@ impl App {
                     .bg(Color::LightGreen)
                     .add_modifier(Modifier::BOLD),
             );
-        frame.render_stateful_widget(widget, area, &mut self.state);
+
+        let lines: Vec<Line> = self
+            ._lines
+            .clone()
+            .into_iter()
+            .map(|s| Line::from(s))
+            .collect();
+        let log = Paragraph::new(Text::from(lines)).block(Block::bordered().title("Log Lines"));
+
+        frame.render_stateful_widget(tree, nav_area, &mut self.state);
+        frame.render_widget(log, log_area);
     }
 }
 
