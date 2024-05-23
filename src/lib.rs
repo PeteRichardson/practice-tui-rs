@@ -55,7 +55,10 @@ impl App {
             ],
             _lines: lines,
         };
-        app.state.select(vec!["a"]);
+        // Select the first item (if any)
+        if let Some(first) = app.items.first() {
+            app.state.select(vec![first.identifier()]);
+        }
         app
     }
 
@@ -79,8 +82,7 @@ impl App {
                     .fg(Color::Black)
                     .bg(Color::LightGreen)
                     .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("");
+            );
         frame.render_stateful_widget(widget, area, &mut self.state);
     }
 }
