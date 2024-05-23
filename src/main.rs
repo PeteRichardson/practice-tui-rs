@@ -1,8 +1,11 @@
+use clap::Parser;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
-use treetest::{run_app, App};
+use treetest::{run_app, App, Config};
 
 fn main() -> std::io::Result<()> {
+    let config = Config::parse();
+
     // Terminal initialization
     crossterm::terminal::enable_raw_mode()?;
     let mut stdout = std::io::stdout();
@@ -14,7 +17,7 @@ fn main() -> std::io::Result<()> {
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
 
     // App
-    let app = App::new();
+    let app = App::new(&config);
     let res = run_app(&mut terminal, app);
 
     // restore terminal
