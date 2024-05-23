@@ -152,13 +152,17 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> std::io::Res
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('\n' | ' ') => app.state.toggle_selected(),
                     KeyCode::Left => {
-                        if app.state.opened().contains(app.state.selected()) {
-                            app.state.key_left();
-                            true
-                        } else {
+                        // Always want there to be a selection, so don't do anything
+                        // if a first-level item is selected and it's not opened.
+                        if app.state.selected().len() == 1
+                            && !app.state.opened().contains(app.state.selected())
+                        {
                             false
+                        } else {
+                            app.state.key_left()
                         }
                     }
+
                     KeyCode::Right => app.state.key_right(),
                     KeyCode::Down => app.state.key_down(),
                     KeyCode::Up => app.state.key_up(),
