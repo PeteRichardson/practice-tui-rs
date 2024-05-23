@@ -2,9 +2,8 @@ use std::time::{Duration, Instant};
 
 use crossterm::event::{Event, KeyCode, MouseEventKind};
 use ratatui::backend::{Backend, CrosstermBackend};
-use ratatui::layout::{Position, Rect};
+use ratatui::layout::Position;
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::Span;
 use ratatui::widgets::{Block, Scrollbar, ScrollbarOrientation};
 use ratatui::{Frame, Terminal};
 use tui_tree_widget::{Tree, TreeItem, TreeState};
@@ -140,9 +139,7 @@ fn main() -> std::io::Result<()> {
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> std::io::Result<()> {
     const DEBOUNCE: Duration = Duration::from_millis(20); // 50 FPS
 
-    let before = Instant::now();
     terminal.draw(|frame| app.draw(frame))?;
-    let mut last_render_took = before.elapsed();
 
     let mut debounce: Option<Instant> = None;
 
@@ -180,31 +177,9 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> std::io::Res
             }
         }
         if debounce.is_some_and(|debounce| debounce.elapsed() > DEBOUNCE) {
-            let before = Instant::now();
             terminal.draw(|frame| {
                 app.draw(frame);
-
-                // Performance info in top right corner
-                {
-                    let text = format!(
-                        " {} {last_render_took:?} {:.1} FPS",
-                        frame.count(),
-                        1.0 / last_render_took.as_secs_f64()
-                    );
-                    #[allow(clippy::cast_possible_truncation)]
-                    let area = Rect {
-                        y: 0,
-                        height: 1,
-                        x: frame.size().width.saturating_sub(text.len() as u16),
-                        width: text.len() as u16,
-                    };
-                    frame.render_widget(
-                        Span::styled(text, Style::new().fg(Color::Black).bg(Color::Gray)),
-                        area,
-                    );
-                }
             })?;
-            last_render_took = before.elapsed();
 
             debounce = None;
         }
