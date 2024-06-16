@@ -17,7 +17,7 @@ use tui_tree_widget::{Tree, TreeItem, TreeState};
 #[command(version, about)]
 pub struct Config {
     /// log file
-    #[arg(default_value = "testdata/dlog0.log")]
+    #[arg(default_value = "treetest/testdata/dlog0.log")]
     pub filename: String,
 }
 
@@ -85,12 +85,7 @@ impl App {
                     .add_modifier(Modifier::BOLD),
             );
 
-        let lines: Vec<Line> = self
-            ._lines
-            .clone()
-            .into_iter()
-            .map(|s| Line::from(s))
-            .collect();
+        let lines: Vec<Line> = self._lines.clone().into_iter().map(Line::from).collect();
         let log = Paragraph::new(Text::from(lines)).block(Block::bordered().title("Log Lines"));
 
         frame.render_stateful_widget(tree, nav_area, &mut self.state);
