@@ -25,6 +25,7 @@ struct App {
     selected: usize,
     nav_selected: usize,
     active_pane: Pane,
+    nav_scroll_offset: usize,
 }
 
 impl App {
@@ -54,6 +55,7 @@ impl App {
             selected: 0,
             nav_selected: 0,
             active_pane: Pane::Left,
+            nav_scroll_offset: 0,
         }
     }
 
@@ -77,6 +79,11 @@ impl App {
             Pane::Left => {
                 if self.nav_selected + 1 < self.paragraphs.len() {
                     self.nav_selected += 1;
+                    let height = 10; // placeholder, will be updated in run_app
+                    // Adjust nav_scroll_offset to keep nav_selected visible
+                    if self.nav_selected >= self.nav_scroll_offset + height {
+                        self.nav_scroll_offset = self.nav_selected - height + 1;
+                    }
                 }
             }
             Pane::Right => {
@@ -92,6 +99,10 @@ impl App {
             Pane::Left => {
                 if self.nav_selected > 0 {
                     self.nav_selected -= 1;
+                    // Adjust nav_scroll_offset to keep nav_selected visible
+                    if self.nav_selected < self.nav_scroll_offset {
+                        self.nav_scroll_offset = self.nav_selected;
+                    }
                 }
             }
             Pane::Right => {
@@ -198,9 +209,17 @@ fn run_app<B: ratatui::backend::Backend>(
                     Style::default()
                 });
 
+            let nav_height = chunks[0].height.saturating_sub(2) as usize; // account for borders
+            if app.nav_selected >= app.nav_scroll_offset + nav_height {
+                app.nav_scroll_offset = app.nav_selected - nav_height + 1;
+            } else if app.nav_selected < app.nav_scroll_offset {
+                app.nav_scroll_offset = app.nav_selected;
+            }
+
             let nav_paragraph = Paragraph::new(nav_text)
                 .block(nav_block)
-                .wrap(ratatui::widgets::Wrap { trim: true });
+                .wrap(ratatui::widgets::Wrap { trim: true })
+                .scroll((app.nav_scroll_offset as u16, 0));
             f.render_widget(nav_paragraph, chunks[0]);
 
             // Right pane: render all visible lines, highlight those corresponding to selected paragraph
@@ -253,8 +272,12 @@ fn run_app<B: ratatui::backend::Backend>(
             if let Event::Key(key) = event::read()? {
                 match key.code {
                     KeyCode::Char('q') => return Ok(()),
-                    KeyCode::Down | KeyCode::Char('j') => app.next(),
-                    KeyCode::Up | KeyCode::Char('k') => app.prev(),
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        app.next();
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        app.prev();
+                    }
                     KeyCode::Left | KeyCode::Char('h') => {
                         app.active_pane = Pane::Left;
                         app.nav_selected = app.selected; // sync selection
