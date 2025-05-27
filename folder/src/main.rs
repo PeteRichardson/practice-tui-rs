@@ -1,19 +1,30 @@
-use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
+use crossterm::{
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    execute,
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+};
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Text},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, Paragraph},
 };
+use std::{error::Error, io};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Pane {
+    Left,
+    Right,
+}
 
 struct App {
     paragraphs: Vec<Vec<String>>,
     collapsed: Vec<bool>,
     selected: usize,
     nav_selected: usize,
+    active_pane: Pane,
 }
 
 impl App {
@@ -35,31 +46,59 @@ impl App {
             paragraphs.push(current);
         }
 
-        let collapsed = vec![true; paragraphs.len()];
+        let collapsed = vec![false; paragraphs.len()];
 
         App {
             paragraphs,
             collapsed,
             selected: 0,
             nav_selected: 0,
+            active_pane: Pane::Left,
         }
     }
 
     fn toggle(&mut self) {
-        if let Some(val) = self.collapsed.get_mut(self.selected) {
-            *val = !*val;
+        match self.active_pane {
+            Pane::Left => {
+                if let Some(val) = self.collapsed.get_mut(self.nav_selected) {
+                    *val = !*val;
+                }
+            }
+            Pane::Right => {
+                if let Some(val) = self.collapsed.get_mut(self.selected) {
+                    *val = !*val;
+                }
+            }
         }
     }
 
     fn next(&mut self) {
-        if self.nav_selected < self.paragraphs.len() - 1 {
-            self.nav_selected += 1;
+        match self.active_pane {
+            Pane::Left => {
+                if self.nav_selected + 1 < self.paragraphs.len() {
+                    self.nav_selected += 1;
+                }
+            }
+            Pane::Right => {
+                if self.selected + 1 < self.paragraphs.len() {
+                    self.selected += 1;
+                }
+            }
         }
     }
 
     fn prev(&mut self) {
-        if self.nav_selected > 0 {
-            self.nav_selected -= 1;
+        match self.active_pane {
+            Pane::Left => {
+                if self.nav_selected > 0 {
+                    self.nav_selected -= 1;
+                }
+            }
+            Pane::Right => {
+                if self.selected > 0 {
+                    self.selected -= 1;
+                }
+            }
         }
     }
 
@@ -82,96 +121,155 @@ impl App {
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let text = r#"
-This is the first paragraph.
-It has two lines.
-
-Second paragraph here, also with
-two lines.
-
-A final short paragraph.
-"#;
-
+fn main() -> Result<(), Box<dyn Error>> {
     enable_raw_mode()?;
-    let mut stdout = std::io::stdout();
-    crossterm::execute!(stdout, EnableMouseCapture)?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Clear the screen before starting
-    terminal.clear()?;
+    let text = "\
+This is paragraph one.
+It has multiple lines.
+Line three of paragraph one.
+
+Paragraph two starts here.
+It also has multiple lines.
+
+Third paragraph is here.
+Single line paragraph.";
 
     let mut app = App::new(text);
 
+    let res = run_app(&mut terminal, &mut app);
+
+    disable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
+    terminal.show_cursor()?;
+
+    if let Err(err) = res {
+        eprintln!("{:?}", err);
+    }
+
+    Ok(())
+}
+
+fn run_app<B: ratatui::backend::Backend>(
+    terminal: &mut Terminal<B>,
+    app: &mut App,
+) -> io::Result<()> {
     loop {
         terminal.draw(|f| {
-            let size = f.area();
+            let area = f.area();
+
             let chunks = Layout::default()
                 .direction(Direction::Horizontal)
-                .constraints([Constraint::Length(30), Constraint::Min(1)])
-                .split(size);
+                .constraints([Constraint::Percentage(30), Constraint::Percentage(70)].as_ref())
+                .split(area);
 
-            // Navigation bar on the left
-            let items: Vec<ListItem> = app
-                .paragraphs
-                .iter()
-                .enumerate()
-                .map(|(i, para)| {
-                    let style = if i == app.nav_selected {
-                        Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
-                    } else {
-                        Style::default()
-                    };
-                    ListItem::new(para[0].clone()).style(style)
-                })
-                .collect();
-
-            let nav =
-                List::new(items).block(Block::default().title("Paragraphs").borders(Borders::ALL));
-
-            f.render_widget(nav, chunks[0]);
-
-            // Main content area on the right
-            let visible_lines = app.visible_lines();
-            let mut text = Text::default();
-
-            for (para_index, line) in visible_lines {
-                let is_selected = para_index == app.selected;
-                let style = if is_selected {
-                    Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
+            // Left pane: navigation list
+            let mut nav_text = Text::default();
+            for (i, para) in app.paragraphs.iter().enumerate() {
+                let style = if i == app.nav_selected && app.active_pane == Pane::Left {
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };
-                text.push_line(Line::styled(line, style));
+
+                let prefix = if app.collapsed[i] { "[+]" } else { "[-]" };
+                let first_line = &para[0];
+                let line = format!("{} {}", prefix, first_line);
+
+                nav_text.push_line(Line::styled(line, style));
+            }
+
+            let nav_block = Block::default()
+                .borders(Borders::ALL)
+                .title("Navigation")
+                .border_style(if app.active_pane == Pane::Left {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                });
+
+            let nav_paragraph = Paragraph::new(nav_text)
+                .block(nav_block)
+                .wrap(ratatui::widgets::Wrap { trim: true });
+            f.render_widget(nav_paragraph, chunks[0]);
+
+            // Right pane: render all visible lines, highlight those corresponding to selected paragraph
+            let right_area = chunks[1];
+            let visible_lines = app.visible_lines();
+            let mut content_text = Text::default();
+            let mut selected_line_idx = None;
+            for (idx, (para_idx, line)) in visible_lines.iter().enumerate() {
+                let style = if *para_idx == app.selected {
+                    if selected_line_idx.is_none() {
+                        selected_line_idx = Some(idx);
+                    }
+                    if app.active_pane == Pane::Right {
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().add_modifier(Modifier::BOLD)
+                    }
+                } else {
+                    Style::default()
+                };
+                content_text.push_line(Line::styled(line.clone(), style));
             }
 
             let content_block = Block::default()
-                .title("Content (q: quit, arrows: nav, Enter: select, Space: toggle)")
-                .borders(Borders::ALL);
+                .borders(Borders::ALL)
+                .title("Content")
+                .border_style(if app.active_pane == Pane::Right {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                });
 
-            let paragraph = Paragraph::new(text).block(content_block);
-            f.render_widget(paragraph, chunks[1]);
+            // Compute the scroll offset so that the first line of the selected paragraph is visible
+            let height = right_area.height.saturating_sub(2) as usize; // account for borders
+            let selected_line = selected_line_idx.unwrap_or(0);
+            let mut scroll = 0;
+            if selected_line >= height {
+                scroll = selected_line - height / 2;
+            }
+            let content_paragraph = Paragraph::new(content_text)
+                .block(content_block)
+                .wrap(ratatui::widgets::Wrap { trim: true })
+                .scroll((scroll as u16, 0));
+            f.render_widget(content_paragraph, right_area);
         })?;
 
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
                 match key.code {
-                    KeyCode::Char('q') => {
-                        disable_raw_mode()?;
-                        crossterm::execute!(terminal.backend_mut(), DisableMouseCapture)?;
-                        terminal.show_cursor()?;
-                        break;
-                    }
-                    KeyCode::Char(' ') => app.toggle(),
+                    KeyCode::Char('q') => return Ok(()),
                     KeyCode::Down => app.next(),
                     KeyCode::Up => app.prev(),
-                    KeyCode::Enter => app.select_nav(),
+                    KeyCode::Left => {
+                        app.active_pane = Pane::Left;
+                        app.nav_selected = app.selected; // sync selection
+                    }
+                    KeyCode::Right => app.active_pane = Pane::Right,
+                    KeyCode::Char(' ') => app.toggle(),
+                    KeyCode::Enter => {
+                        if app.active_pane == Pane::Left {
+                            app.select_nav();
+                            app.active_pane = Pane::Right;
+                        }
+                    }
                     _ => {}
                 }
             }
         }
     }
-
-    Ok(())
 }
