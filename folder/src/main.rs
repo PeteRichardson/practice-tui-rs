@@ -253,18 +253,32 @@ fn run_app<B: ratatui::backend::Backend>(
             if let Event::Key(key) = event::read()? {
                 match key.code {
                     KeyCode::Char('q') => return Ok(()),
-                    KeyCode::Down => app.next(),
-                    KeyCode::Up => app.prev(),
-                    KeyCode::Left => {
+                    KeyCode::Down | KeyCode::Char('j') => app.next(),
+                    KeyCode::Up | KeyCode::Char('k') => app.prev(),
+                    KeyCode::Left | KeyCode::Char('h') => {
                         app.active_pane = Pane::Left;
                         app.nav_selected = app.selected; // sync selection
                     }
-                    KeyCode::Right => app.active_pane = Pane::Right,
+                    KeyCode::Right | KeyCode::Char('l') => app.active_pane = Pane::Right,
                     KeyCode::Char(' ') => app.toggle(),
                     KeyCode::Enter => {
                         if app.active_pane == Pane::Left {
                             app.select_nav();
                             app.active_pane = Pane::Right;
+                        }
+                    }
+                    KeyCode::Home => {
+                        if app.active_pane == Pane::Right {
+                            app.selected = 0;
+                        }
+                    }
+                    KeyCode::End => {
+                        if app.active_pane == Pane::Right {
+                            app.selected = if app.paragraphs.is_empty() {
+                                0
+                            } else {
+                                app.paragraphs.len() - 1
+                            };
                         }
                     }
                     _ => {}
