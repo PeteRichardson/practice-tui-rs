@@ -1,4 +1,4 @@
 [workspace]
 resolver = "2"
 
-members = ["events", "styled_text", "treetest"]
+members = ["events", "folder", "styled_text", "treetest"]
